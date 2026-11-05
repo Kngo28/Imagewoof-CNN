@@ -1,5 +1,7 @@
 # HW2 Imagewoof team setup
 
+**Local GPU setup:** See [LOCAL_SETUP.md](LOCAL_SETUP.md) for the Windows/VS Code workflow. The Colab instructions below remain an alternative.
+
 Use a private GitHub repository as the shared source of truth and Colab GPU sessions for training. Each teammate has a separate runtime. This starter contains environment setup only, not an assignment solution.
 
 ## 1. Repository owner: publish this folder
