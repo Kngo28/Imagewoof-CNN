@@ -1,0 +1,6 @@
+# Install torch and torchvision separately for your CPU/GPU platform.
+numpy
+Pillow
+matplotlib
+scikit-learn
+tqdm
