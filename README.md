@@ -1,115 +1,149 @@
-# HW2 Imagewoof team setup
+# Imagewoof CNN
 
-**Local GPU setup:** See [LOCAL_SETUP.md](LOCAL_SETUP.md) for the Windows/VS Code workflow. The Colab instructions below remain an alternative.
+A custom sequential PyTorch CNN for classifying ten dog breeds from the instructor-provided Imagewoof dataset. Develop and train locally in VS Code; use this repository to share code and reproducible setup instructions.
 
-Use a private GitHub repository as the shared source of truth and Colab GPU sessions for training. Each teammate has a separate runtime. This starter contains environment setup only, not an assignment solution.
+## Project files
 
-## 1. Repository owner: publish this folder
+| File or folder | Purpose |
+| --- | --- |
+| `submission.py` | CNN architecture, official class order, `load_model`, and `predict` |
+| `train.py` | Training, validation, best-checkpoint saving, and inference verification |
+| `check_environment.py` | Package imports and a small GPU forward/backward check |
+| `requirements-windows-lock.txt` | Tested, pinned Windows NVIDIA environment |
+| `requirements-gpu.txt` | GPU package pair plus unpinned supporting dependencies |
+| `requirements.txt` | Supporting dependencies without PyTorch |
+| `data/` | Local training/validation images and class mapping; ignored by Git |
+| `runs/` | Local checkpoints, metrics, and source snapshots; ignored by Git |
+| `.venv/` | Local Python environment; ignored by Git |
 
-Create an empty private GitHub repository, then run these commands inside this folder (replace OWNER and REPO):
+## First-time setup for teammates
+
+These instructions target **Windows, PowerShell, Python 3.13, and a compatible NVIDIA GPU**. The setup was tested on an RTX 3080 with PyTorch 2.11.0 and CUDA 12.8 wheels. Other operating systems or GPU types need an appropriate [PyTorch installation](https://pytorch.org/get-started/locally/) instead of this Windows lockfile.
+
+### 1. Install prerequisites and clone
+
+Install [Git](https://git-scm.com/downloads), [VS Code](https://code.visualstudio.com/), [uv](https://docs.astral.sh/uv/getting-started/installation/), and a current NVIDIA GPU driver. Install Microsoft's Python extension in VS Code. Accept the repository collaborator invitation before cloning.
+
+Run these commands from the directory where you want to keep the project:
 
 ```powershell
-git init -b main
-git add .
-git commit -m "Add project environment starter"
-git remote add origin https://github.com/OWNER/REPO.git
-git push -u origin main
+git clone https://github.com/Kngo28/Imagewoof-CNN.git
+cd Imagewoof-CNN
 ```
 
-Invite teammates under repository Settings > Collaborators. Use your normal GitHub login or credential manager; never put access tokens in notebooks. The course data and model weights are excluded from Git.
+Open the cloned folder using **VS Code > File > Open Folder**, then open **Terminal > New Terminal**. Run all remaining commands from this project folder. If you already have a local copy, open that folder instead of cloning again.
 
-## 2. Agree on the working layout
+### 2. Create the environment and verify the GPU
+
+```powershell
+uv python install 3.13
+uv venv --python 3.13 .venv
+uv pip install --python .venv\Scripts\python.exe -r requirements-windows-lock.txt
+.\.venv\Scripts\python.exe check_environment.py --require-cuda
+```
+
+The check should print your GPU name and `PASS`. The GPU packages are a large download; installation only needs to be repeated when rebuilding the environment or updating dependencies.
+
+Press **Ctrl+Shift+P > Python: Select Interpreter** and select `.venv\Scripts\python.exe`. The commands here use that interpreter explicitly, so environment activation is unnecessary.
+
+### 3. Extract the course dataset
+
+Get `imagewoof_train.zip` and `imagewoof_val.zip` from the instructor or the team's private dataset folder. If both are in your Windows Downloads folder, run:
+
+```powershell
+New-Item -ItemType Directory -Force data | Out-Null
+Expand-Archive -LiteralPath "$env:USERPROFILE\Downloads\imagewoof_train.zip" -DestinationPath data -Force
+Expand-Archive -LiteralPath "$env:USERPROFILE\Downloads\imagewoof_val.zip" -DestinationPath data -Force
+```
+
+Change the archive paths if you saved them elsewhere. Both archives contain the same `classes.txt`; `-Force` permits that shared file to be extracted again. The resulting layout must be:
 
 ```text
-submission.py         # eventual self-contained model, load_model, predict
-train.py              # eventual training entry point; imports the same model
-configs/              # small saved experiment configurations
-notebooks/            # optional Colab launcher / exploration
-results/              # small metrics files and selected plots to commit
-data/                 # instructor data, ignored by Git
-checkpoints/          # model weights, ignored by Git
+data/
+  classes.txt
+  train/
+    australian_terrier/
+    ...
+  val/
+    australian_terrier/
+    ...
 ```
 
-Only the environment files currently exist. Add these components as you implement the project. Keep reusable code in Python files to reduce notebook merge conflicts.
+There should be **9,065 training images** and **1,295 validation images**, each RGB and 128 x 128. The training script validates the counts, dimensions, and official class mapping before training. Do not add an extra `train/train` or `val/val` folder level.
 
-## 3. Colab: recommended training environment
+Use only the supplied course data and preserve its splits. The public Imagewoof dataset must not be substituted. Labels follow `classes.txt`, not alphabetical folder order.
 
-Create a notebook in Colab and select Runtime > Change runtime type > GPU. Upload the current project source files using Colab's Files panel, or use Colab's authenticated GitHub integration to open a notebook from the private repository. Opening a notebook does not automatically copy other repository files into its runtime; upload those files too. Never embed credentials in a clone URL.
+## Run training
 
-Colab normally provides torch and torchvision. Start with that compatible pair:
-
-```python
-%pip install -r requirements.txt
-!python check_environment.py --require-cuda
-```
-
-If working in a subdirectory, first use `%cd` to enter it. If changing torch/torchvision versions, install a compatible pair from the official PyTorch selector and restart the runtime.
-
-Upload the instructor's train/validation archives and classes.txt to a restricted shared Drive folder. Mount Drive in Colab, copy the archives into runtime-local storage, and extract them there for training. Inspect the actual archive structure before setting paths. Write checkpoints back to Drive regularly: local runtime storage is temporary. Give each teammate/run a unique output directory to prevent overwrites.
-
-After the first successful setup, save the environment record:
-
-```python
-!python -m pip freeze > environment-colab.txt
-!python check_environment.py --require-cuda > environment-check.txt
-```
-
-Download and commit those records. The requirements file is intentionally unpinned until a working environment is verified. Agree on the same torch/torchvision and direct dependency versions, then pin them. A Colab freeze includes unrelated preinstalled packages; treat it as an environment record, not a portable Windows lockfile.
-
-## 4. Optional local development on Windows
-
-Use a dedicated Python 3.12 environment as a conservative team baseline. With uv installed:
+First run a one-epoch rehearsal:
 
 ```powershell
-uv python install 3.12
-uv venv --python 3.12 .venv
-uv pip install --python .venv\Scripts\python.exe torch torchvision --index-url https://download.pytorch.org/whl/cpu
-uv pip install --python .venv\Scripts\python.exe -r requirements.txt
-.\.venv\Scripts\python.exe check_environment.py
+.\.venv\Scripts\python.exe -u train.py --data data --output runs/local_check_01 --epochs 1
 ```
 
-This installs CPU PyTorch for local development and inference checks. For local NVIDIA GPU training, use the install command from https://pytorch.org/get-started/locally/ for your OS and supported CUDA configuration instead. CPU-only local development does not replace the assignment's GPU training setup. Select this folder's .venv interpreter in your editor. No environment activation is required for these commands.
+After it finishes successfully, start a full baseline run:
 
-## 5. Validate data before training
+```powershell
+.\.venv\Scripts\python.exe -u train.py --data data --output runs/local_baseline_01 --epochs 30 --patience 7 --batch-size 64 --seed 42
+```
 
-- Use only the instructor-provided imagewoof_train.zip and imagewoof_val.zip, plus classes.txt. Do not download the public Imagewoof dataset.
-- Verify 9,065 training images and 1,295 validation images; preserve the supplied splits.
-- Verify images are RGB and 128 x 128. Inspect a few examples and labels.
-- Read classes.txt and explicitly map folder labels into that order. Do not assume torchvision ImageFolder's alphabetical mapping matches it.
-- Use random augmentation only for training. Validation and predict must use matching deterministic preprocessing and normalization.
-- Record archive hashes so teammates can confirm that they have identical inputs.
+- Each run needs a **new output folder**. Use names such as `runs/nev_baseline_02` to identify the teammate and experiment.
+- Training saves the best validation checkpoint and stops after seven epochs without improved validation accuracy, or after the epoch limit.
+- If GPU memory runs out, try `--batch-size 32` with a new output folder.
+- Keep the PC awake and the training terminal running. Files persist after interruption, but the current script **does not resume training**; a new invocation starts from scratch.
+- Fixed seeds help reproducibility, but results may differ across hardware and package versions.
 
-## 6. Collaborate and record experiments
+For normal use, open the project and run the training command. You do not need to recreate the environment or extract the dataset again.
 
-Each change gets a branch, a small commit, and a pull request reviewed by a teammate. Pull main before starting. Assign ownership of notebooks to avoid simultaneous edits.
+## Results and model files
 
-For each run, record the Git commit, seed, architecture, augmentation, optimizer, learning rate/schedule, batch size, epochs, package versions, best validation accuracy, and checkpoint location. Seed Python random, NumPy, PyTorch, and data-loader workers in training code. Fixed seeds improve reproducibility but do not guarantee identical GPU results across platforms.
+Each run saves:
 
-Manually agree on experiments; the assignment prohibits hyperparameter optimization/search tools. Save the best validation checkpoint with its exact configuration. Reserve time for a fresh-runtime rehearsal rather than spending all remaining time tuning.
+| File | Contents |
+| --- | --- |
+| `model.pth` | Weights with the best validation accuracy |
+| `submission.py`, `train.py` | Source snapshots for that run |
+| `config.json` | Run settings, seed, package versions, and device details |
+| `history.csv` | Per-epoch losses, accuracies, and learning rate |
+| `verification.json` | Final prediction-interface and CPU inference checks, written after successful verification |
 
-## 7. Submission contract and rehearsal
+Keep each checkpoint with its matching `submission.py`. Back up important run folders to the team's private file storage; ignored local files are not backed up by GitHub. To share experiment summaries through Git, copy selected small metrics or plots into a `results/` folder and record the source commit and checkpoint location.
 
-Build a custom sequential CNN from allowed standard layers; no pretrained weights, skip connections, attention, external data, or architecture-search tools.
+## Team workflow
 
-The final self-contained code file must define:
+GitHub stores source, dependency files, documentation, and selected small results. `.gitignore` excludes environments, datasets, run folders, Python caches, ZIP archives, model weights, and `.env` files. Each teammate installs their own environment and keeps their own dataset copy.
+
+Start a change from an up-to-date `main` with a clean working tree:
+
+```powershell
+git switch main
+git pull --ff-only origin main
+git switch -c your-name/change-description
+```
+
+After editing:
+
+```powershell
+git add .
+git diff --cached --stat
+git status
+git commit -m "Describe the change"
+git push -u origin HEAD
+```
+
+Review the staged files before committing, then open a pull request on GitHub for teammate review. `git add .` respects `.gitignore`, although ignore rules do not remove files already tracked by Git. Coordinate dependency changes and update the environment instructions/version pins when needed.
+
+## Assignment submission
+
+Use a custom sequential CNN built from allowed standard layers. Do not use pretrained weights, external data, skip connections, attention, or hyperparameter/architecture-search tools.
+
+The self-contained `submission.py` exposes:
 
 ```python
-def load_model(path="model.pth"):
-    # Build exact architecture, load weights with portable device mapping,
-    # put model in eval mode, return model.
-    ...
-
-def predict(model, images):
-    # Input: uint8 NumPy RGB array (N, 128, 128, 3).
-    # Normalize here; infer in batches without gradients.
-    # Return integer NumPy array (N,), class IDs 0-9 in classes.txt order.
-    ...
+load_model(path="model.pth")  # Load the matching architecture/weights in eval mode.
+predict(model, images)       # Raw uint8 RGB (N,128,128,3) -> integer class IDs (N,).
 ```
 
-Importing the code must not start training, mount Drive, or download data. Because submission contains only the code file and weights, embed the required class mapping/preprocessing constants; do not require extra local config files or classes.txt at inference time.
+Normalization and class order are embedded in the inference file. Importing it does not start training. At the end of training, the script checks validation accuracy through `predict` and performs a CPU inference check. Rehearse the final files in a fresh environment before submission.
 
-In a fresh environment, test loading on CPU and GPU and run the exact predict interface over validation images. Confirm its accuracy matches validation during training. Check output shape, dtype, and label range. Package exactly your code file and model.pth as GroupX_Assignment.zip.
-
-The spec states Nov 7, 2026 at 11:59 pm; confirm the course timezone. Both submission and live Teams evaluation must be completed before the deadline. Arrange the meeting early; the evaluated version is final. Include teammate names and IDs in the submission comment as requested.
-
-References: https://pytorch.org/get-started/locally/ and https://research.google.com/colaboratory/faq.html
+Package only the chosen run's **`submission.py` and `model.pth`** at the root of `GroupX_Assignment.zip`, replacing X with the group number. Include each teammate's name and ID in the submission comment. The specification lists **November 7, 2026, at 11:59 pm**; confirm the course timezone and complete both file submission and the live Teams evaluation before the deadline. The version evaluated live is final.
