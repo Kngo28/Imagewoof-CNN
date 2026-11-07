@@ -11,25 +11,46 @@ CLASS_NAMES = (
 
 
 class DogCNN(nn.Module):
-    """Six convolution layers, no pretrained weights or skip connections."""
+    """Eight convolution layers in four stages; no pretrained weights or skips."""
     def __init__(self):
         super().__init__()
-        layers = []
-        in_channels = 3
-        for channels in (32, 64, 128):
-            for _ in range(2):
-                layers.extend([
-                    nn.Conv2d(in_channels, channels, 3, padding=1, bias=False),
-                    nn.BatchNorm2d(channels),
-                    nn.ReLU(),
-                ])
-                in_channels = channels
-            layers.append(nn.MaxPool2d(2))
-        layers.extend([
-            nn.AdaptiveAvgPool2d(1), nn.Flatten(),
-            nn.Dropout(0.3), nn.Linear(128, 10),
-        ])
-        self.network = nn.Sequential(*layers)
+        # Layers execute from top to bottom. Each Conv2d's input channels must
+        # match the previous layer's output channels, as must BatchNorm2d.
+        self.network = nn.Sequential(
+            # Stage 1: (3, 128, 128) -> (32, 64, 64)
+            nn.Conv2d(3, 32, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+
+            # Stage 2: (32, 64, 64) -> (64, 32, 32)
+            nn.Conv2d(32, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+
+            # Stage 3: (64, 32, 32) -> (128, 16, 16)
+            nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+
+            # Classifier: 256 feature maps -> 256 features -> 10 class scores.
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Dropout(0.5),
+            # Match in_features to the last convolution's output channels.
+            nn.Linear(128, 10),
+        )
 
     def forward(self, images):
         return self.network(images)

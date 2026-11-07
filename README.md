@@ -109,6 +109,26 @@ Each run saves:
 
 Keep each checkpoint with its matching `submission.py`. Back up important run folders to the team's private file storage; ignored local files are not backed up by GitHub. To share experiment summaries through Git, copy selected small metrics or plots into a `results/` folder and record the source commit and checkpoint location.
 
+## Inspect validation mistakes
+
+After training, analyze a saved run without retraining:
+
+```powershell
+.\.venv\Scripts\python.exe inspect_validation.py --run runs/local_baseline_01 --data data
+```
+
+The script loads that run's saved `submission.py` and `model.pth`, so later edits to the root architecture do not change which model is evaluated. It uses the official `predict` interface and only the validation set.
+
+Open the generated files in the run's `analysis/` folder:
+
+- `confusion_matrix.png`: image counts; rows are true breeds and columns are predictions. Diagonal entries are correct predictions.
+- `confusion_matrix_normalized.png`: percentages within each true breed, making unequal class sizes easier to compare.
+- `misclassified_examples.png`: up to 16 randomly selected mistakes with true and predicted labels. Use `--examples 24 --seed 7` to change the selection.
+- `predictions.csv`: each image's path, true label, and predicted label.
+- `confusion_matrix.csv` and `summary.json`: counts, accuracy, per-class recall, and most common confusions.
+
+Rerunning analysis replaces these reports, not the trained weights. The reports stay local under the ignored `runs/` folder; copy selected reports into `results/` if you want to share them through GitHub.
+
 ## Team workflow
 
 GitHub stores source, dependency files, documentation, and selected small results. `.gitignore` excludes environments, datasets, run folders, Python caches, ZIP archives, model weights, and `.env` files. Each teammate installs their own environment and keeps their own dataset copy.

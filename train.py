@@ -75,9 +75,13 @@ def main():
     parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--weight-decay', type=float, default=1e-4,
+                        help='AdamW weight decay (default: 0.0001)')
     args = parser.parse_args()
     if min(args.epochs, args.patience, args.batch_size) < 1 or args.lr <= 0:
         parser.error('epochs, patience, batch size, and learning rate must be positive')
+    if not np.isfinite(args.weight_decay) or args.weight_decay < 0:
+        parser.error('weight decay must be finite and nonnegative')
     # Refuse accidental overwrites of a previous experiment.
     args.output.mkdir(parents=True, exist_ok=False)
     random.seed(args.seed)
@@ -96,7 +100,11 @@ def main():
     if mapping != {name: i for i, name in enumerate(CLASS_NAMES)}:
         raise ValueError('classes.txt does not match the submission class order')
     normalize = transforms.Normalize((0.5,) * 3, (0.5,) * 3)
+
+    # Convert image pixels into a PyTorch tensor, changing their layout from height–width–channels to channels–height–width.
     train_transform = transforms.Compose([
+        # Keep 80-100% of the image area, then resize back to 128x128.
+        transforms.RandomResizedCrop(128, scale=(0.8, 1.0), ratio=(0.9, 1.1)),
         transforms.RandomHorizontalFlip(), transforms.ToTensor(), normalize,
     ])
     val_transform = transforms.Compose([transforms.ToTensor(), normalize])
@@ -109,6 +117,8 @@ def main():
             with Image.open(path) as image:
                 if image.size != (128, 128) or image.mode != 'RGB':
                     raise ValueError(f'Expected RGB 128x128: {path}')
+    
+    # Data loaders organize images into batches            
     train_loader = DataLoader(
         train_data, batch_size=args.batch_size, shuffle=True, num_workers=0,
         generator=torch.Generator().manual_seed(args.seed),
@@ -122,13 +132,15 @@ def main():
                   device=str(device), classes=list(CLASS_NAMES),
                   gpu=torch.cuda.get_device_name(0) if device.type == 'cuda' else None)
     (args.output / 'config.json').write_text(json.dumps(config, indent=2))
+    
     # Preserve the exact inference architecture alongside its weights.
     for name in ('submission.py', 'train.py'):
         shutil.copy2(Path(__file__).with_name(name), args.output / name)
 
     model = DogCNN().to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr,
+                                  weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     best_accuracy, stale_epochs = -1.0, 0
     weights_path = args.output / 'model.pth'
