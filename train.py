@@ -102,10 +102,23 @@ def main():
     normalize = transforms.Normalize((0.5,) * 3, (0.5,) * 3)
 
     # Convert image pixels into a PyTorch tensor, changing their layout from height–width–channels to channels–height–width.
+    # train_transform = transforms.Compose([
+    #     # Keep 80-100% of the image area, then resize back to 128x128.
+    #     transforms.RandomResizedCrop(128, scale=(0.8, 1.0), ratio=(0.9, 1.1)),
+    #     transforms.RandomHorizontalFlip(), transforms.ToTensor(), normalize,
+    # ])
     train_transform = transforms.Compose([
-        # Keep 80-100% of the image area, then resize back to 128x128.
-        transforms.RandomResizedCrop(128, scale=(0.8, 1.0), ratio=(0.9, 1.1)),
-        transforms.RandomHorizontalFlip(), transforms.ToTensor(), normalize,
+        transforms.RandomResizedCrop(
+            128,
+            scale=(0.65, 1.0),
+            ratio=(0.9, 1.1),),
+        transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(
+            brightness=0.2,
+            contrast=0.2,
+            saturation=0.1,),
+        transforms.ToTensor(),
+        normalize,
     ])
     val_transform = transforms.Compose([transforms.ToTensor(), normalize])
     train_data = OfficialImageFolder(args.data / 'train', transform=train_transform)
