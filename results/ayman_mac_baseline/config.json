@@ -1,0 +1,27 @@
+{
+  "data": "data",
+  "output": "runs/mac_gpu_20261106_021837",
+  "epochs": 30,
+  "patience": 7,
+  "batch_size": 64,
+  "seed": 42,
+  "lr": 0.001,
+  "python": "3.13.13 | packaged by Anaconda, Inc. | (main, Apr 14 2026, 06:14:06) [Clang 20.1.8 ]",
+  "torch": "2.15.0",
+  "torchvision": "0.29.2",
+  "numpy": "2.5.4",
+  "device": "mps",
+  "classes": [
+    "shih_tzu",
+    "rhodesian_ridgeback",
+    "beagle",
+    "english_foxhound",
+    "border_terrier",
+    "australian_terrier",
+    "golden_retriever",
+    "old_english_sheepdog",
+    "samoyed",
+    "dingo"
+  ],
+  "gpu": null
+}

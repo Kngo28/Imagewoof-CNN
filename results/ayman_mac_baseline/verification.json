@@ -1,0 +1,5 @@
+{
+  "best_training_validation_accuracy": 0.7235521235521235,
+  "predict_validation_accuracy": 0.7235521235521235,
+  "cpu_inference_passed": true
+}

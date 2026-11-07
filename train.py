@@ -85,7 +85,7 @@ def main():
     torch.manual_seed(args.seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
     print(f'Device: {device}', flush=True)
 
     mapping = {}
@@ -155,8 +155,7 @@ def main():
                 print('Early stopping', flush=True)
                 break
 
-    best_model = load_model(weights_path)
-    # Use the same batch size as predict for the preprocessing parity check.
+    best_model = load_model(weights_path).to(device)    # Use the same batch size as predict for the preprocessing parity check.
     reference_loader = DataLoader(val_data, batch_size=64)
     _, reference_acc = run_epoch(best_model, reference_loader, criterion, device)
     verified_acc = verify_submission(best_model, val_data, reference_acc)
