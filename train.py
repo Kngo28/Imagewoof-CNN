@@ -26,7 +26,7 @@ class OfficialImageFolder(datasets.ImageFolder):
         return list(CLASS_NAMES), {name: i for i, name in enumerate(CLASS_NAMES)}
 
 
-def run_epoch(model, loader, criterion, device, optimizer=None):
+def run_epoch(model, loader, criterion, device, optimizer=None, batch_scheduler=None):
     training = optimizer is not None
     model.train(training)
     loss_sum, correct, total = 0.0, 0, 0
@@ -40,6 +40,8 @@ def run_epoch(model, loader, criterion, device, optimizer=None):
             if training:
                 loss.backward()
                 optimizer.step()
+                if batch_scheduler is not None:
+                    batch_scheduler.step()
             loss_sum += loss.item() * len(labels)
             correct += (logits.argmax(1) == labels).sum().item()
             total += len(labels)
@@ -74,7 +76,9 @@ def main():
     parser.add_argument('--patience', type=int, default=7)
     parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--lr', type=float, default=0.001,
+                        help='Initial LR for cosine; peak LR for onecycle')
+    parser.add_argument('--scheduler', choices=('cosine', 'onecycle'), default='cosine')
     parser.add_argument('--weight-decay', type=float, default=1e-4,
                         help='AdamW weight decay (default: 0.0001)')
     args = parser.parse_args()
@@ -102,24 +106,22 @@ def main():
     normalize = transforms.Normalize((0.5,) * 3, (0.5,) * 3)
 
     # Convert image pixels into a PyTorch tensor, changing their layout from height–width–channels to channels–height–width.
-    # train_transform = transforms.Compose([
-    #     # Keep 80-100% of the image area, then resize back to 128x128.
-    #     transforms.RandomResizedCrop(128, scale=(0.8, 1.0), ratio=(0.9, 1.1)),
-    #     transforms.RandomHorizontalFlip(), transforms.ToTensor(), normalize,
-    # ])
     train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(
-            128,
-            scale=(0.65, 1.0),
-            ratio=(0.9, 1.1),),
-        transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(
-            brightness=0.2,
-            contrast=0.2,
-            saturation=0.1,),
-        transforms.ToTensor(),
-        normalize,
+        transforms.RandomHorizontalFlip(), transforms.ToTensor(), normalize,
     ])
+    # train_transform = transforms.Compose([
+    #         transforms.RandomResizedCrop(
+    #             128,
+    #             scale=(0.65, 1.0),
+    #             ratio=(0.9, 1.1),),
+    #         transforms.RandomHorizontalFlip(),
+    #         transforms.ColorJitter(
+    #             brightness=0.2,
+    #             contrast=0.2,
+    #             saturation=0.1,),
+    #         transforms.ToTensor(),
+    #         normalize,
+    #     ])
     val_transform = transforms.Compose([transforms.ToTensor(), normalize])
     train_data = OfficialImageFolder(args.data / 'train', transform=train_transform)
     val_data = OfficialImageFolder(args.data / 'val', transform=val_transform)
@@ -144,6 +146,11 @@ def main():
                   torchvision=torchvision.__version__, numpy=np.__version__,
                   device=str(device), classes=list(CLASS_NAMES),
                   gpu=torch.cuda.get_device_name(0) if device.type == 'cuda' else None)
+    if args.scheduler == 'onecycle':
+        config.update(scheduler_settings=dict(max_lr=args.lr, pct_start=0.3,
+                      div_factor=10, final_div_factor=1000, cycle_momentum=False,
+                      steps_per_epoch=len(train_loader), total_steps=args.epochs * len(train_loader)),
+                      early_stopping_enabled=False)
     (args.output / 'config.json').write_text(json.dumps(config, indent=2))
     
     # Preserve the exact inference architecture alongside its weights.
@@ -154,14 +161,26 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr,
                                   weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    if args.scheduler == 'onecycle':
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer, max_lr=args.lr, epochs=args.epochs,
+            steps_per_epoch=len(train_loader), pct_start=0.3,
+            div_factor=10, final_div_factor=1000, cycle_momentum=False,
+        )
+        print('One-cycle: updating LR after each training batch; early stopping disabled '
+              'to complete the cycle. Best validation checkpoint is still saved.', flush=True)
+    else:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     best_accuracy, stale_epochs = -1.0, 0
     weights_path = args.output / 'model.pth'
     with (args.output / 'history.csv').open('w', newline='') as handle:
         writer = csv.writer(handle)
         writer.writerow(['epoch', 'train_loss', 'train_accuracy', 'val_loss', 'val_accuracy', 'lr'])
         for epoch in range(1, args.epochs + 1):
-            train_loss, train_acc = run_epoch(model, train_loader, criterion, device, optimizer)
+            train_loss, train_acc = run_epoch(
+                model, train_loader, criterion, device, optimizer,
+                batch_scheduler=scheduler if args.scheduler == 'onecycle' else None,
+            )
             val_loss, val_acc = run_epoch(model, val_loader, criterion, device)
             writer.writerow([epoch, train_loss, train_acc, val_loss, val_acc, optimizer.param_groups[0]['lr']])
             handle.flush()
@@ -175,8 +194,9 @@ def main():
                 print('Saved new best model', flush=True)
             else:
                 stale_epochs += 1
-            scheduler.step()
-            if stale_epochs >= args.patience:
+            if args.scheduler == 'cosine':
+                scheduler.step()
+            if args.scheduler == 'cosine' and stale_epochs >= args.patience:
                 print('Early stopping', flush=True)
                 break
 

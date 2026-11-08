@@ -44,21 +44,21 @@ class DogCNN(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(2),
 
-            # Stage 4: (128, 16, 16) -> (256, 8, 8)
-            nn.Conv2d(128, 256, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(256),
+            # Stage 4: (128, 16, 16) -> (128, 8, 8)
+            nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.Conv2d(256, 256, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(256),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.MaxPool2d(2),
 
-            # Classifier: 256 feature maps -> 256 features -> 10 class scores.
+            # Classifier: 128 feature maps -> 256 features -> 10 class scores.
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
             nn.Dropout(0.5),
             # Match in_features to the last convolution's output channels.
-            nn.Linear(256, 10),
+            nn.Linear(128, 10),
         )
 
     def forward(self, images):
