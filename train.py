@@ -30,6 +30,7 @@ def run_epoch(model, loader, criterion, device, optimizer=None, batch_scheduler=
     training = optimizer is not None
     model.train(training)
     loss_sum, correct, total = 0.0, 0, 0
+    loss_denominator = 0.0
     with torch.set_grad_enabled(training):
         for images, labels in loader:
             images, labels = images.to(device), labels.to(device)
@@ -42,10 +43,13 @@ def run_epoch(model, loader, criterion, device, optimizer=None, batch_scheduler=
                 optimizer.step()
                 if batch_scheduler is not None:
                     batch_scheduler.step()
-            loss_sum += loss.item() * len(labels)
+            denominator = (criterion.weight[labels].sum().item()
+                           if criterion.weight is not None else len(labels))
+            loss_sum += loss.item() * denominator
+            loss_denominator += denominator
             correct += (logits.argmax(1) == labels).sum().item()
             total += len(labels)
-    return loss_sum / total, correct / total
+    return loss_sum / loss_denominator, correct / total
 
 
 def verify_submission(model, dataset, expected_accuracy):
@@ -79,9 +83,13 @@ def main():
     parser.add_argument('--lr', type=float, default=0.001,
                         help='Initial LR for cosine; peak LR for onecycle')
     parser.add_argument('--scheduler', choices=('cosine', 'onecycle'), default='cosine')
+    parser.add_argument('--foxhound-weight', type=float, default=1.0,
+                        help='Training loss weight for English foxhound; other classes use 1.0')
     parser.add_argument('--weight-decay', type=float, default=1e-4,
                         help='AdamW weight decay (default: 0.0001)')
     args = parser.parse_args()
+    if not np.isfinite(args.foxhound_weight) or args.foxhound_weight <= 0:
+        parser.error('foxhound weight must be finite and positive')
     if min(args.epochs, args.patience, args.batch_size) < 1 or args.lr <= 0:
         parser.error('epochs, patience, batch size, and learning rate must be positive')
     if not np.isfinite(args.weight_decay) or args.weight_decay < 0:
@@ -106,9 +114,9 @@ def main():
     normalize = transforms.Normalize((0.5,) * 3, (0.5,) * 3)
 
     # Convert image pixels into a PyTorch tensor, changing their layout from height–width–channels to channels–height–width.
-    train_transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(), transforms.ToTensor(), normalize,
-    ])
+    # train_transform = transforms.Compose([
+    #     transforms.RandomHorizontalFlip(), transforms.ToTensor(), normalize,
+    # ])
     # train_transform = transforms.Compose([
     #         transforms.RandomResizedCrop(
     #             128,
@@ -122,6 +130,11 @@ def main():
     #         transforms.ToTensor(),
     #         normalize,
     #     ])
+    train_transform = transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        normalize,
+    ])
     val_transform = transforms.Compose([transforms.ToTensor(), normalize])
     train_data = OfficialImageFolder(args.data / 'train', transform=train_transform)
     val_data = OfficialImageFolder(args.data / 'val', transform=val_transform)
@@ -142,6 +155,10 @@ def main():
 
     config = {key: str(value) if isinstance(value, Path) else value
               for key, value in vars(args).items()}
+    class_weights = torch.ones(len(CLASS_NAMES), dtype=torch.float32, device=device)
+    class_weights[CLASS_NAMES.index('english_foxhound')] = args.foxhound_weight
+    config.update(training_class_weights=class_weights.cpu().tolist(),
+                  validation_loss='unweighted_cross_entropy')
     config.update(python=sys.version, torch=torch.__version__,
                   torchvision=torchvision.__version__, numpy=np.__version__,
                   device=str(device), classes=list(CLASS_NAMES),
@@ -159,6 +176,7 @@ def main():
 
     model = DogCNN().to(device)
     criterion = nn.CrossEntropyLoss()
+    train_criterion = nn.CrossEntropyLoss(weight=class_weights)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr,
                                   weight_decay=args.weight_decay)
     if args.scheduler == 'onecycle':
@@ -178,7 +196,7 @@ def main():
         writer.writerow(['epoch', 'train_loss', 'train_accuracy', 'val_loss', 'val_accuracy', 'lr'])
         for epoch in range(1, args.epochs + 1):
             train_loss, train_acc = run_epoch(
-                model, train_loader, criterion, device, optimizer,
+                model, train_loader, train_criterion, device, optimizer,
                 batch_scheduler=scheduler if args.scheduler == 'onecycle' else None,
             )
             val_loss, val_acc = run_epoch(model, val_loader, criterion, device)

@@ -1,0 +1,53 @@
+{
+  "data": "data",
+  "output": "runs\\onecycle_100epochs_stage4_256",
+  "epochs": 100,
+  "patience": 7,
+  "batch_size": 64,
+  "seed": 42,
+  "lr": 0.001,
+  "scheduler": "onecycle",
+  "foxhound_weight": 1.0,
+  "weight_decay": 0.001,
+  "training_class_weights": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "validation_loss": "unweighted_cross_entropy",
+  "python": "3.13.14 (tags/v3.13.14:fd17997, Jun 10 2026, 13:03:48) [MSC v.1944 64 bit (AMD64)]",
+  "torch": "2.11.0+cu128",
+  "torchvision": "0.26.0+cu128",
+  "numpy": "2.5.4",
+  "device": "cuda",
+  "classes": [
+    "shih_tzu",
+    "rhodesian_ridgeback",
+    "beagle",
+    "english_foxhound",
+    "border_terrier",
+    "australian_terrier",
+    "golden_retriever",
+    "old_english_sheepdog",
+    "samoyed",
+    "dingo"
+  ],
+  "gpu": "NVIDIA GeForce RTX 3080",
+  "scheduler_settings": {
+    "max_lr": 0.001,
+    "pct_start": 0.3,
+    "div_factor": 10,
+    "final_div_factor": 1000,
+    "cycle_momentum": false,
+    "steps_per_epoch": 142,
+    "total_steps": 14200
+  },
+  "early_stopping_enabled": false
+}
